@@ -6,15 +6,15 @@ from pathlib import Path
 
 from src.models.Course import Course
 
-STALE_THRESHOLD_DAYS = 30
+STALE_THRESHOLD_DAYS = 7
 
 
 class CacheManager:
-    def __init__(self, db_path=None):
+    def __init__(self, db_path: str = None):
         if db_path is None:
             db_path = Path(__file__).parent.parent.parent / "data" / "UofUCourses.db"
-
         schema_path = Path(__file__).parent / "schema.sql"
+
         self.connection = sqlite3.connect(db_path)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
@@ -58,6 +58,9 @@ class CacheManager:
         Returns a new immutable Course with real database IDs populated.
         """
         data = asdict(course)
+
+        # Convert datetime to ISO 8601 string for SQLite storage
+        data["last_scraped"] = course.last_scraped.isoformat()
 
         # Insert department if it doesn't already exist
         self.cursor.execute(
