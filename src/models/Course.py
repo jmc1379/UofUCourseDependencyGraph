@@ -12,7 +12,7 @@ class Course:
     #string like "3500"
     course_number: str
 
-    #human readable title like "Software Practice"
+    #human-readable title like "Software Practice"
     course_name: str
     #full catalog description text
     course_description: str
