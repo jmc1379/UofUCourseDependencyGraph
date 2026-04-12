@@ -1,5 +1,6 @@
 import dataclasses
 import datetime
+import logging
 import sqlite3
 from dataclasses import asdict
 from pathlib import Path
@@ -54,7 +55,9 @@ class CacheManager:
 
     def insert_course(self, course: Course) -> Course:
         """
-        Insert a course and its prerequisite relationships into the database.
+        Insert a course row into the database. Does NOT insert prerequisite
+        relationships — call insert_prerequisites() in a second pass once all
+        courses are loaded.
         Returns a new immutable Course with real database IDs populated.
         """
         data = asdict(course)
@@ -73,7 +76,7 @@ class CacheManager:
         )
         department_id = self.cursor.fetchone()[0]
 
-        # Insert course
+        # Insert course row only — no prerequisites
         self.cursor.execute(
             """
             INSERT INTO courses (
@@ -87,17 +90,42 @@ class CacheManager:
             {**data, "department_id": department_id}
         )
         course_id = self.cursor.lastrowid
-
-        # Insert prerequisite relationships
-        for prerequisite_id in course.prerequisites_ids:
-            self.cursor.execute(
-                "INSERT OR IGNORE INTO prerequisites (course_id, prerequisite_id) VALUES (?, ?)",
-                (course_id, prerequisite_id)
-            )
-
         self.connection.commit()
 
         return dataclasses.replace(course, department_id=department_id, course_id=course_id)
+
+    def insert_prerequisites(self, course: Course) -> None:
+        """
+        Resolve prerequisite course codes to database IDs and insert the
+        relationships into the prerequisites table.
+        Called in pass 2 after all courses have been inserted.
+        Skips any prerequisite code that cannot be found in the database and
+        logs a warning.
+        """
+        for code in course.prerequisite_codes:
+            # Split code into department and number e.g. "CS3500" -> ("CS", "3500")
+            match = _COURSE_CODE_SPLIT_RE.match(code)
+            if not match:
+                logging.warning(
+                    f"CS {course.course_number}: could not parse prerequisite code '{code}', skipping."
+                )
+                continue
+
+            dept, number = match.group(1), match.group(2)
+            prereq_row   = self.get_course_by_code(dept, number)
+
+            if prereq_row is None:
+                logging.warning(
+                    f"CS {course.course_number}: prerequisite '{code}' not found in database, skipping."
+                )
+                continue
+
+            self.cursor.execute(
+                "INSERT OR IGNORE INTO prerequisites (course_id, prerequisite_id) VALUES (?, ?)",
+                (course.course_id, prereq_row["course_id"])
+            )
+
+        self.connection.commit()
 
     # ─── Course Read Methods ──────────────────────────────────────────────────
 
@@ -179,7 +207,7 @@ class CacheManager:
         if row is None:
             return True
         last_scraped = datetime.datetime.fromisoformat(row["last_scraped"])
-        age = datetime.datetime.now() - last_scraped
+        age          = datetime.datetime.now() - last_scraped
         return age.days > STALE_THRESHOLD_DAYS
 
     def mark_scraped(self, course_id: int) -> None:
@@ -215,3 +243,10 @@ class CacheManager:
             (department_id,)
         )
         self.connection.commit()
+
+
+# ─── Module-level helpers ──────────────────────────────────────────────────────
+
+import re
+# Splits a course code string into department and number e.g. "CS3500" -> ("CS", "3500")
+_COURSE_CODE_SPLIT_RE = re.compile(r"^([A-Z]{2,})(\d{4}[A-Z]?)$")

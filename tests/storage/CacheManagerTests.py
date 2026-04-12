@@ -26,7 +26,7 @@ def sample_course():
         course_description="Practical exposure to creating large software systems.",
         course_units=4.0,
         raw_prerequisites_string="Prerequisites: CS 2420",
-        prerequisites_ids=set(),
+        prerequisites_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -44,7 +44,7 @@ def prerequisite_course():
         course_description="Introduction to algorithms and data structures.",
         course_units=4.0,
         raw_prerequisites_string="",
-        prerequisites_ids=set(),
+        prerequisites_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -62,7 +62,7 @@ def math_course():
         course_description="Vectors, matrices, and linear transformations.",
         course_units=3.0,
         raw_prerequisites_string="",
-        prerequisites_ids=set(),
+        prerequisites_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -180,7 +180,7 @@ class TestInsertCourse:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="Prerequisites: CS 2420",
-            prerequisites_ids={inserted_prereq.course_id},
+            prerequisites_codes={inserted_prereq.course_id},
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
@@ -257,7 +257,7 @@ class TestPrerequisiteMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_ids={inserted_prereq.course_id},
+            prerequisites_codes={inserted_prereq.course_id},
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
@@ -276,7 +276,7 @@ class TestPrerequisiteMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_ids={inserted_prereq.course_id},
+            prerequisites_codes={inserted_prereq.course_id},
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
@@ -309,7 +309,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_ids=set(),
+            prerequisites_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime.now(),
         )
@@ -326,7 +326,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_ids=set(),
+            prerequisites_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime(2020, 1, 1),
         )
@@ -343,7 +343,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_ids=set(),
+            prerequisites_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime(2020, 1, 1),
         )
@@ -368,7 +368,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_ids={inserted_prereq.course_id},
+            prerequisites_codes={inserted_prereq.course_id},
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
