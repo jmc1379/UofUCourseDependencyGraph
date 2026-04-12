@@ -17,7 +17,7 @@ def sample_course():
         course_description="Practical exposure to the process of creating large software systems.",
         course_units=4.0,
         raw_prerequisites_string="Prerequisites: CS 2420 AND CS 2100",
-        prerequisites_codes={1, 2},
+        prerequisites_codes={"CS2420", "CS2100"},
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -56,7 +56,7 @@ class TestCourseInstantiation:
         assert sample_course.course_name == "Software Practice"
         assert sample_course.course_units == 4.0
         assert sample_course.is_active is True
-        assert sample_course.prerequisites_codes == {1, 2}
+        assert sample_course.prerequisites_codes == {"CS2420", "CS2100"}
 
     def test_course_with_no_prerequisites(self, minimal_course):
         assert minimal_course.prerequisites_codes == set()
@@ -142,11 +142,11 @@ class TestCourseEdgeCases:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_codes={1, 1, 2},  # duplicate 1
+            prerequisites_codes={"CS2420", "CS2420", "CS2100"},  # duplicate 1
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
-        assert course.prerequisites_codes == {1, 2}
+        assert course.prerequisites_codes == {"CS2420", "CS2100"}
 
     def test_inactive_course(self):
         course = Course(
