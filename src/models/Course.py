@@ -11,9 +11,6 @@ class Course:
     course_id: int
     #string like "3500"
     course_number: str
-    @property
-    def course_code(self):
-        return str(f"{self.department_code}{self.course_number}")
 
     #human readable title like "Software Practice"
     course_name: str
@@ -31,3 +28,7 @@ class Course:
     is_active: bool
     #timestamp of when this record was last fetched
     last_scraped: datetime.datetime
+
+    @property
+    def course_code(self):
+        return str(f"{self.department_code}{self.course_number}")
