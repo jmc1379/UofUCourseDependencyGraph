@@ -17,7 +17,7 @@ def sample_course():
         course_description="Practical exposure to the process of creating large software systems.",
         course_units=4.0,
         raw_prerequisites_string="Prerequisites: CS 2420 AND CS 2100",
-        prerequisites_codes={"CS2420", "CS2100"},
+        prerequisite_codes={"CS2420", "CS2100"},
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -35,7 +35,7 @@ def minimal_course():
         course_description="",
         course_units=3.0,
         raw_prerequisites_string="",
-        prerequisites_codes=set(),
+        prerequisite_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -56,10 +56,10 @@ class TestCourseInstantiation:
         assert sample_course.course_name == "Software Practice"
         assert sample_course.course_units == 4.0
         assert sample_course.is_active is True
-        assert sample_course.prerequisites_codes == {"CS2420", "CS2100"}
+        assert sample_course.prerequisite_codes == {"CS2420", "CS2100"}
 
     def test_course_with_no_prerequisites(self, minimal_course):
-        assert minimal_course.prerequisites_codes == set()
+        assert minimal_course.prerequisite_codes == set()
         assert minimal_course.raw_prerequisites_string == ""
 
     def test_course_with_float_units(self, sample_course):
@@ -83,7 +83,7 @@ class TestCourseImmutability:
 
     def test_cannot_set_prerequisites_ids(self, sample_course):
         with pytest.raises(AttributeError):
-            sample_course.prerequisites_codes = {99}
+            sample_course.prerequisite_codes = {"CS4400"}
 
     def test_cannot_set_is_active(self, sample_course):
         with pytest.raises(AttributeError):
@@ -117,7 +117,7 @@ class TestCourseCode:
             course_description="",
             course_units=3.0,
             raw_prerequisites_string="",
-            prerequisites_codes=set(),
+            prerequisite_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
@@ -129,7 +129,7 @@ class TestCourseCode:
 class TestCourseEdgeCases:
 
     def test_prerequisites_ids_is_a_set(self, sample_course):
-        assert isinstance(sample_course.prerequisites_codes, set)
+        assert isinstance(sample_course.prerequisite_codes, set)
 
     def test_prerequisites_ids_no_duplicates(self):
         """Sets inherently disallow duplicates — confirm behavior is as expected."""
@@ -142,11 +142,11 @@ class TestCourseEdgeCases:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_codes={"CS2420", "CS2420", "CS2100"},  # duplicate 1
+            prerequisite_codes={"CS2420", "CS2420", "CS2100"},  # duplicate 1
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
-        assert course.prerequisites_codes == {"CS2420", "CS2100"}
+        assert course.prerequisite_codes == {"CS2420", "CS2100"}
 
     def test_inactive_course(self):
         course = Course(
@@ -158,7 +158,7 @@ class TestCourseEdgeCases:
             course_description="",
             course_units=3.0,
             raw_prerequisites_string="",
-            prerequisites_codes=set(),
+            prerequisite_codes=set(),
             is_active=False,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
@@ -175,7 +175,7 @@ class TestCourseEdgeCases:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_codes=set(),
+            prerequisite_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )

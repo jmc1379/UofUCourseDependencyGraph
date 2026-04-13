@@ -22,7 +22,7 @@ class Course:
     #exact text as scraped from the catalog
     raw_prerequisites_string: str
     #parsed list of course ID integers
-    prerequisites_codes: set[str]
+    prerequisite_codes: set[str]
 
     #boolean, whether the course is currently offered
     is_active: bool

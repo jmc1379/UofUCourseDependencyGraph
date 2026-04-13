@@ -16,7 +16,7 @@ def cache():
 
 @pytest.fixture
 def sample_course():
-    """A valid Course with placeholder IDs for insertion."""
+    """A valid Course with placeholder IDs and no prerequisite codes."""
     return Course(
         department_id=-1,
         department_code="CS",
@@ -26,7 +26,7 @@ def sample_course():
         course_description="Practical exposure to creating large software systems.",
         course_units=4.0,
         raw_prerequisites_string="Prerequisites: CS 2420",
-        prerequisites_codes=set(),
+        prerequisite_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -44,7 +44,7 @@ def prerequisite_course():
         course_description="Introduction to algorithms and data structures.",
         course_units=4.0,
         raw_prerequisites_string="",
-        prerequisites_codes=set(),
+        prerequisite_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -62,7 +62,7 @@ def math_course():
         course_description="Vectors, matrices, and linear transformations.",
         course_units=3.0,
         raw_prerequisites_string="",
-        prerequisites_codes=set(),
+        prerequisite_codes=set(),
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -70,14 +70,42 @@ def math_course():
 
 @pytest.fixture
 def inserted_course(cache, sample_course):
-    """A course that has already been inserted into the database."""
+    """A course inserted in pass 1 — no prerequisites linked yet."""
     return cache.insert_course(sample_course)
 
 
 @pytest.fixture
 def inserted_prereq(cache, prerequisite_course):
-    """A prerequisite course already inserted into the database."""
+    """A prerequisite course inserted in pass 1."""
     return cache.insert_course(prerequisite_course)
+
+
+@pytest.fixture
+def inserted_course_with_prereqs(cache, prerequisite_course):
+    """
+    Two-pass fixture: inserts both courses then links prerequisites.
+    Returns the dependent course with real IDs.
+    """
+    # Pass 1 — insert both courses
+    inserted_prereq = cache.insert_course(prerequisite_course)
+    course_with_code = Course(
+        department_id=-1,
+        department_code="CS",
+        course_id=-1,
+        course_number="3500",
+        course_name="Software Practice",
+        course_description="",
+        course_units=4.0,
+        raw_prerequisites_string="Prerequisites: CS 2420",
+        prerequisite_codes={inserted_prereq.course_code},
+        is_active=True,
+        last_scraped=datetime.datetime(2025, 1, 1),
+    )
+    inserted = cache.insert_course(course_with_code)
+
+    # Pass 2 — link prerequisites
+    cache.insert_prerequisites(inserted)
+    return inserted
 
 
 # ─── Initialization ───────────────────────────────────────────────────────────
@@ -109,7 +137,6 @@ class TestContextManager:
     def test_context_manager_closes_connection(self):
         with CacheManager(db_path=":memory:") as cm:
             assert cm.connection is not None
-        # After exiting, executing should raise
         with pytest.raises(Exception):
             cm.cursor.execute("SELECT 1")
 
@@ -146,7 +173,7 @@ class TestDepartmentMethods:
         assert len(cs_departments) == 1
 
 
-# ─── Course Insert ────────────────────────────────────────────────────────────
+# ─── Course Insert — Pass 1 ───────────────────────────────────────────────────
 
 class TestInsertCourse:
 
@@ -169,9 +196,10 @@ class TestInsertCourse:
         assert result.course_units == 4.0
         assert result.is_active is True
 
-    def test_insert_course_with_prerequisites(self, cache, prerequisite_course, sample_course):
-        inserted_prereq = cache.insert_course(prerequisite_course)
-        course_with_prereq = Course(
+    def test_insert_course_does_not_insert_prerequisites(self, cache, prerequisite_course):
+        """Pass 1 should not insert any prerequisite relationships."""
+        cache.insert_course(prerequisite_course)
+        course_with_code = Course(
             department_id=-1,
             department_code="CS",
             course_id=-1,
@@ -180,20 +208,81 @@ class TestInsertCourse:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="Prerequisites: CS 2420",
-            prerequisites_codes={inserted_prereq.course_id},
+            prerequisite_codes={"CS2420"},
             is_active=True,
             last_scraped=datetime.datetime(2025, 1, 1),
         )
-        result = cache.insert_course(course_with_prereq)
-        prereqs = cache.get_prerequisites_for_course(result.course_id)
-        assert len(prereqs) == 1
-        assert prereqs[0]["course_number"] == "2420"
+        inserted = cache.insert_course(course_with_code)
+        prereqs = cache.get_prerequisites_for_course(inserted.course_id)
+        assert prereqs == []
 
     def test_insert_course_original_is_unchanged(self, cache, sample_course):
         """Original Course object should remain immutable after insert."""
         cache.insert_course(sample_course)
         assert sample_course.course_id == -1
         assert sample_course.department_id == -1
+
+
+# ─── Insert Prerequisites — Pass 2 ───────────────────────────────────────────
+
+class TestInsertPrerequisites:
+
+    def test_insert_prerequisites_links_courses(self, cache, inserted_course_with_prereqs):
+        prereqs = cache.get_prerequisites_for_course(inserted_course_with_prereqs.course_id)
+        assert len(prereqs) == 1
+        assert prereqs[0]["course_number"] == "2420"
+
+    def test_insert_prerequisites_skips_unknown_course_code(self, cache):
+        """A prerequisite code with no matching course should be skipped silently."""
+        course_with_unknown = Course(
+            department_id=-1,
+            department_code="CS",
+            course_id=-1,
+            course_number="4400",
+            course_name="Computer Systems",
+            course_description="",
+            course_units=3.0,
+            raw_prerequisites_string="",
+            prerequisite_codes={"CS9999"},
+            is_active=True,
+            last_scraped=datetime.datetime(2025, 1, 1),
+        )
+        inserted = cache.insert_course(course_with_unknown)
+        cache.insert_prerequisites(inserted)
+        prereqs = cache.get_prerequisites_for_course(inserted.course_id)
+        assert prereqs == []
+
+    def test_insert_prerequisites_skips_malformed_code(self, cache):
+        """A malformed prerequisite code should be skipped silently."""
+        course_with_bad_code = Course(
+            department_id=-1,
+            department_code="CS",
+            course_id=-1,
+            course_number="4400",
+            course_name="Computer Systems",
+            course_description="",
+            course_units=3.0,
+            raw_prerequisites_string="",
+            prerequisite_codes={"NOTACODE"},
+            is_active=True,
+            last_scraped=datetime.datetime(2025, 1, 1),
+        )
+        inserted = cache.insert_course(course_with_bad_code)
+        cache.insert_prerequisites(inserted)
+        prereqs = cache.get_prerequisites_for_course(inserted.course_id)
+        assert prereqs == []
+
+    def test_insert_prerequisites_no_duplicates(self, cache, inserted_course_with_prereqs):
+        """Calling insert_prerequisites twice should not create duplicate rows."""
+        cache.insert_prerequisites(inserted_course_with_prereqs)
+        prereqs = cache.get_prerequisites_for_course(inserted_course_with_prereqs.course_id)
+        assert len(prereqs) == 1
+
+    def test_insert_prerequisites_empty_codes_does_nothing(self, cache, inserted_course):
+        """A course with no prerequisite codes should insert nothing."""
+        cache.insert_prerequisites(inserted_course)
+        prereqs = cache.get_prerequisites_for_course(inserted_course.course_id)
+        assert prereqs == []
 
 
 # ─── Course Read Methods ──────────────────────────────────────────────────────
@@ -235,52 +324,25 @@ class TestCourseReadMethods:
         assert cache.get_all_courses() == []
 
 
-# ─── Prerequisite Methods ─────────────────────────────────────────────────────
+# ─── Prerequisite Read Methods ────────────────────────────────────────────────
 
 class TestPrerequisiteMethods:
 
-    def test_get_prerequisites_empty_when_none(self, cache, inserted_course):
+    def test_get_prerequisites_empty_before_pass_2(self, cache, inserted_course):
+        """Prerequisites should be empty until insert_prerequisites is called."""
         prereqs = cache.get_prerequisites_for_course(inserted_course.course_id)
         assert prereqs == []
 
-    def test_get_dependents_empty_when_none(self, cache, inserted_course):
-        dependents = cache.get_dependents_for_course(inserted_course.course_id)
+    def test_get_dependents_empty_before_pass_2(self, cache, inserted_prereq):
+        dependents = cache.get_dependents_for_course(inserted_prereq.course_id)
         assert dependents == []
 
-    def test_get_prerequisites_returns_correct_course(self, cache, inserted_prereq):
-        course_with_prereq = Course(
-            department_id=-1,
-            department_code="CS",
-            course_id=-1,
-            course_number="3500",
-            course_name="Software Practice",
-            course_description="",
-            course_units=4.0,
-            raw_prerequisites_string="",
-            prerequisites_codes={inserted_prereq.course_id},
-            is_active=True,
-            last_scraped=datetime.datetime(2025, 1, 1),
-        )
-        inserted = cache.insert_course(course_with_prereq)
-        prereqs = cache.get_prerequisites_for_course(inserted.course_id)
+    def test_get_prerequisites_returns_correct_course(self, cache, inserted_course_with_prereqs):
+        prereqs = cache.get_prerequisites_for_course(inserted_course_with_prereqs.course_id)
         assert len(prereqs) == 1
         assert prereqs[0]["course_number"] == "2420"
 
-    def test_get_dependents_returns_correct_course(self, cache, inserted_prereq):
-        course_with_prereq = Course(
-            department_id=-1,
-            department_code="CS",
-            course_id=-1,
-            course_number="3500",
-            course_name="Software Practice",
-            course_description="",
-            course_units=4.0,
-            raw_prerequisites_string="",
-            prerequisites_codes={inserted_prereq.course_id},
-            is_active=True,
-            last_scraped=datetime.datetime(2025, 1, 1),
-        )
-        cache.insert_course(course_with_prereq)
+    def test_get_dependents_returns_correct_course(self, cache, inserted_prereq, inserted_course_with_prereqs):
         dependents = cache.get_dependents_for_course(inserted_prereq.course_id)
         assert len(dependents) == 1
         assert dependents[0]["course_number"] == "3500"
@@ -299,7 +361,7 @@ class TestCacheUtilityMethods:
     def test_is_stale_returns_true_for_missing_course(self, cache):
         assert cache.is_stale(9999) is True
 
-    def test_is_stale_returns_false_for_recently_scraped(self, cache, sample_course):
+    def test_is_stale_returns_false_for_recently_scraped(self, cache):
         fresh_course = Course(
             department_id=-1,
             department_code="CS",
@@ -309,7 +371,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_codes=set(),
+            prerequisite_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime.now(),
         )
@@ -326,7 +388,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_codes=set(),
+            prerequisite_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime(2020, 1, 1),
         )
@@ -343,7 +405,7 @@ class TestCacheUtilityMethods:
             course_description="",
             course_units=4.0,
             raw_prerequisites_string="",
-            prerequisites_codes=set(),
+            prerequisite_codes=set(),
             is_active=True,
             last_scraped=datetime.datetime(2020, 1, 1),
         )
@@ -358,21 +420,7 @@ class TestCacheUtilityMethods:
         cache.clear_department("CS")
         assert len(cache.get_courses_by_department("CS")) == 0
 
-    def test_clear_department_removes_prerequisites(self, cache, inserted_prereq):
-        course_with_prereq = Course(
-            department_id=-1,
-            department_code="CS",
-            course_id=-1,
-            course_number="3500",
-            course_name="Software Practice",
-            course_description="",
-            course_units=4.0,
-            raw_prerequisites_string="",
-            prerequisites_codes={inserted_prereq.course_id},
-            is_active=True,
-            last_scraped=datetime.datetime(2025, 1, 1),
-        )
-        cache.insert_course(course_with_prereq)
+    def test_clear_department_removes_prerequisites(self, cache, inserted_course_with_prereqs):
         cache.clear_department("CS")
         cache.cursor.execute("SELECT * FROM prerequisites")
         assert cache.cursor.fetchall() == []
