@@ -3,6 +3,7 @@ import logging
 import re
 
 from bs4 import BeautifulSoup
+from numpy.matlib import empty
 
 from src.models.Course import Course
 from src.scraping.CatalogParser import CatalogParser, COURSE_CODE_RE
@@ -105,8 +106,26 @@ class UofUCatalogParser(CatalogParser):
         Returns a set of course code strings e.g. {"CS2420", "MATH2270"}.
         Non-course requirements like 'instructor consent' are discarded.
         """
-        matches = COURSE_CODE_RE.findall(raw_prerequisite_string)
-        return {f"{dept}{number}" for dept, number in matches}
+        courses = set()
+
+        # Match full patterns like "CS 2420" or "MATH 1210"
+        pattern = re.findall(r'\b([A-Z]{2,4})\s*(\d{3,4})\b', raw_prerequisite_string)
+
+        last_subject = None
+
+        for subject, number in pattern:
+            last_subject = subject
+            courses.add(f"{subject}{number}")
+
+        # Handle chained numbers like "MATH 1050 OR 1060 OR 1080"
+        chain_pattern = re.findall(r'\b([A-Z]{2,4})\s*((?:\d{3,4}(?:\s*OR\s*)?)+)', raw_prerequisite_string)
+
+        for subject, numbers_str in chain_pattern:
+            numbers = re.findall(r'\d{3,4}', numbers_str)
+            for num in numbers:
+                courses.add(f"{subject}{num}")
+
+        return courses
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
