@@ -148,7 +148,7 @@ class TestParseCourseDetailCS3500:
     def test_no_prerequisite_codes_extracted(self, parser, cs_3500_html):
         """Policy-only prerequisites should yield an empty set of codes."""
         result = parser.parse_course_detail(cs_3500_html, "CS")
-        assert result.prerequisite_codes == set(str)
+        assert result.prerequisite_codes == set()
 
     def test_prereq_string_captured(self, parser, cs_3500_html):
         result = parser.parse_course_detail(cs_3500_html, "CS")
