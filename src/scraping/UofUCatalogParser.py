@@ -80,7 +80,7 @@ class UofUCatalogParser(CatalogParser):
                     course_description = desc_col.get_text(strip=True)[:2000]
 
             # ── Prerequisite course codes ─────────────────────────────────────
-            prerequisite_codes = self.parse_prerequisites(raw_prerequisites_string)
+            prerequisite_codes = frozenset(self.parse_prerequisites(raw_prerequisites_string))
 
             return Course(
                 department_id=-1,

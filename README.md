@@ -10,7 +10,7 @@ Currently targets the **University of Utah** catalog, with architecture designed
 
 - Scrapes all courses for any department (or the entire university) from the U of U class schedule
 - Parses prerequisite strings including AND/OR logic and cross-department references
-- Builds a **prerequisite dependency graph** using a sparse adjacency matrix
+- Builds a **prerequisite dependency graph** using adjacency list
 - Builds a **course similarity graph** using TF-IDF cosine similarity on course descriptions
 - Renders both as interactive, filterable HTML visualizations
 - Caches scraped data in SQLite to avoid redundant network requests

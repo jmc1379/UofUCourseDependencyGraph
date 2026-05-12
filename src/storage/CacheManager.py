@@ -163,7 +163,7 @@ class CacheManager:
 
     def get_all_courses(self) -> list[sqlite3.Row]:
         """Fetch every course row in the database."""
-        self.cursor.execute("SELECT * FROM courses")
+        self.cursor.execute("SELECT c.*, d.department_code FROM courses c, departments d WHERE d.department_id = c.department_id", ())
         return self.cursor.fetchall()
 
     # ─── Prerequisite Methods ─────────────────────────────────────────────────
@@ -172,8 +172,9 @@ class CacheManager:
         """Return all courses that are prerequisites of the given course."""
         self.cursor.execute(
             """
-            SELECT c.* FROM courses c
+            SELECT c.*, d.department_code FROM courses c
             JOIN prerequisites p ON c.course_id = p.prerequisite_id
+            JOIN departments d ON c.department_id = d.department_id
             WHERE p.course_id = ?
             """,
             (course_id,)
