@@ -13,7 +13,7 @@ def make_course(
     course_number: str,
     name: str = "Test Course",
     units: float = 3.0,
-    prerequisite_codes: set[str] = None,
+    prerequisite_codes: frozenset[str] = frozenset(),
 ) -> Course:
     """Build a Course with placeholder IDs and sensible defaults."""
     return Course(
@@ -25,7 +25,7 @@ def make_course(
         course_description=f"{name} description.",
         course_units=units,
         raw_prerequisites_string="",
-        prerequisite_codes=prerequisite_codes if prerequisite_codes is not None else set(),
+        prerequisite_codes=prerequisite_codes,
         is_active=True,
         last_scraped=datetime.datetime(2025, 1, 1, 12, 0, 0),
     )
@@ -44,7 +44,6 @@ def populate(cache: CacheManager, courses: list[Course]) -> dict[str, Course]:
 
     # Pass 2 — link prerequisites
     for course_code, course in inserted.items():
-        # Rebuild the course with prerequisite_codes from the original spec
         original = next(c for c in courses if c.course_code == course_code)
         if original.prerequisite_codes:
             import dataclasses
@@ -84,8 +83,8 @@ def linear_chain_graph(cache):
     """
     courses = [
         make_course("CS", "1400", "Intro to Programming"),
-        make_course("CS", "2420", "Algorithms", prerequisite_codes={"CS1400"}),
-        make_course("CS", "3500", "Software Practice", prerequisite_codes={"CS2420"}),
+        make_course("CS", "2420", "Algorithms", prerequisite_codes=frozenset({"CS1400"})),
+        make_course("CS", "3500", "Software Practice", prerequisite_codes=frozenset({"CS2420"})),
     ]
     populate(cache, courses)
     return CourseGraph(cache)
@@ -99,7 +98,7 @@ def multi_department_graph(cache):
     """
     courses = [
         make_course("MATH", "2270", "Linear Algebra"),
-        make_course("CS", "3500", "Software Practice", prerequisite_codes={"MATH2270"}),
+        make_course("CS", "3500", "Software Practice", prerequisite_codes=frozenset({"MATH2270"})),
         make_course("CS", "1400", "Intro to Programming"),
     ]
     populate(cache, courses)
@@ -153,6 +152,11 @@ class TestCourseAccess:
         assert course.department_code == "CS"
         assert course.course_units == 3.0
         assert course.is_active is True
+
+    def test_course_prerequisite_codes_is_frozenset(self, linear_chain_graph):
+        """Verify prerequisite_codes is stored as frozenset (immutable)."""
+        course = linear_chain_graph.get_course("CS2420")
+        assert isinstance(course.prerequisite_codes, frozenset)
 
 
 # ─── get_direct_prerequisites ─────────────────────────────────────────────────
@@ -253,6 +257,13 @@ class TestGetAllCourses:
     def test_returns_course_objects(self, linear_chain_graph):
         result = linear_chain_graph.get_all_courses()
         assert all(isinstance(c, Course) for c in result)
+
+    def test_courses_are_hashable(self, linear_chain_graph):
+        """A frozen dataclass with frozenset fields should be hashable."""
+        result = linear_chain_graph.get_all_courses()
+        # If Course isn't hashable this conversion would raise.
+        as_set = set(result)
+        assert len(as_set) == 3
 
 
 # ─── get_courses_by_department ────────────────────────────────────────────────
