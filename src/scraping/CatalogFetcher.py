@@ -4,8 +4,9 @@ from abc import ABC, abstractmethod
 
 import aiohttp
 
-MAX_RETRIES   = 5
-REQUEST_DELAY = 0.3    # seconds between requests (be polite)
+MAX_RETRIES        = 5
+REQUEST_DELAY      = 0.3    # polite delay between successful requests (seconds)
+RATE_LIMIT_BACKOFF = 2.0    # base seconds for exponential backoff when rate limited
 
 
 class CatalogFetcher(ABC):
@@ -32,8 +33,8 @@ class CatalogFetcher(ABC):
     # ─── Abstract Interface ───────────────────────────────────────────────────
 
     @abstractmethod
-    def _construct_course_url(self, department_code: str, course_number: str) -> str:
-        """Construct the URL for a single course detail page."""
+    def _construct_course_url(self, department_code: str, course_number: str, section: str) -> str:
+        """Construct the URL for a single course detail page for a given section."""
         pass
 
     @abstractmethod
@@ -41,43 +42,76 @@ class CatalogFetcher(ABC):
         """Construct the URL for a department course listing page."""
         pass
 
+    @abstractmethod
+    def _construct_sections_url(self, department_code: str, course_number: str) -> str:
+        """Construct the URL for a course's section listing page."""
+        pass
+
     # ─── Shared Fetch Logic ───────────────────────────────────────────────────
 
     async def _fetch(self, url: str, label: str) -> str | None:
         """
-        Core fetch method with retry logic and error handling.
-        Used internally by fetch_course and fetch_department_list.
+        Core fetch method with retry logic, error handling, and rate-limit
+        detection. HTTP 429 responses are retried with exponential backoff
+        rather than treated as a normal failure.
         """
         for attempt in range(MAX_RETRIES):
+            rate_limited = False
             try:
                 async with self.semaphore:
                     async with self.session.get(url) as response:
                         if response.status == 200:
+                            html = await response.text()
                             await asyncio.sleep(REQUEST_DELAY)
-                            return await response.text()
+                            return html
+                        elif response.status == 429:
+                            rate_limited = True
+                            logging.warning(
+                                f"{label}: HTTP 429 (rate limited) "
+                                f"on attempt {attempt + 1}/{MAX_RETRIES}."
+                            )
                         else:
                             logging.warning(
                                 f"{label}: HTTP {response.status} "
-                                f"on attempt {attempt + 1}/{MAX_RETRIES}"
+                                f"on attempt {attempt + 1}/{MAX_RETRIES}."
                             )
             except aiohttp.ClientError as e:
                 logging.warning(
-                    f"{label}: Request failed "
+                    f"{label}: request failed "
                     f"on attempt {attempt + 1}/{MAX_RETRIES} — {e}"
                 )
 
+            # Wait before the next attempt. Rate-limited responses get an
+            # exponentially growing backoff; everything else gets the
+            # standard polite delay. Skip the wait after the final attempt.
             if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(REQUEST_DELAY)
+                if rate_limited:
+                    backoff = RATE_LIMIT_BACKOFF * (2 ** attempt)
+                    logging.info(f"{label}: backing off {backoff:.1f}s before retry.")
+                    await asyncio.sleep(backoff)
+                else:
+                    await asyncio.sleep(REQUEST_DELAY)
 
-        logging.error(f"{label}: All {MAX_RETRIES} attempts failed, skipping.")
+        logging.error(f"{label}: all {MAX_RETRIES} attempts failed, skipping.")
         return None
 
     # ─── Public Fetch Methods ─────────────────────────────────────────────────
 
-    async def fetch_course(self, department_code: str, course_number: str) -> str | None:
-        """Fetch a single course detail page. Returns HTML string or None on failure."""
-        url   = self._construct_course_url(department_code, course_number)
-        label = f"{department_code} {course_number}"
+    async def fetch_course(
+        self, department_code: str, course_number: str, section: str = "001"
+    ) -> str | None:
+        """
+        Fetch a single course detail page for the given section (default 001).
+        Returns HTML string or None on failure.
+        """
+        url   = self._construct_course_url(department_code, course_number, section)
+        label = f"{department_code} {course_number} (section {section})"
+        return await self._fetch(url, label)
+
+    async def fetch_sections(self, department_code: str, course_number: str) -> str | None:
+        """Fetch a course's section listing page. Returns HTML string or None on failure."""
+        url   = self._construct_sections_url(department_code, course_number)
+        label = f"{department_code} {course_number} sections page"
         return await self._fetch(url, label)
 
     async def fetch_department_list(self, department_code: str) -> str | None:
@@ -85,35 +119,3 @@ class CatalogFetcher(ABC):
         url   = self._construct_department_list_url(department_code)
         label = f"{department_code} list page"
         return await self._fetch(url, label)
-
-    async def fetch_department(self, department_code: str, course_numbers: list[str]) -> list[str]:
-        """
-        Fetch all course detail pages for a given list of course numbers concurrently.
-        Returns a list of HTML strings for successfully fetched courses.
-        """
-        logging.info(f"{department_code}: fetching {len(course_numbers)} courses...")
-
-        results = await asyncio.gather(
-            *[self.fetch_course(department_code, number) for number in course_numbers],
-            return_exceptions=False
-        )
-
-        successful = [html for html in results if html is not None]
-        logging.info(
-            f"{department_code}: {len(successful)}/{len(course_numbers)} "
-            f"courses fetched successfully."
-        )
-        return successful
-
-    async def fetch_all(self, department_map: dict[str, list[str]]) -> dict[str, list[str]]:
-        """
-        Fetch all course detail pages for every department.
-        Accepts a dict mapping department code to list of course numbers to fetch.
-        Returns a dict mapping department code to list of HTML strings.
-        """
-        logging.info(f"Beginning full fetch for {len(department_map)} departments.")
-        results = {}
-        for department_code, course_numbers in department_map.items():
-            results[department_code] = await self.fetch_department(department_code, course_numbers)
-        logging.info("Full fetch complete.")
-        return results

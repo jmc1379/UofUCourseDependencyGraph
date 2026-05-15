@@ -3,7 +3,6 @@ import logging
 import re
 
 from bs4 import BeautifulSoup
-from numpy.matlib import empty
 
 from src.models.Course import Course
 from src.scraping.CatalogParser import CatalogParser, COURSE_CODE_RE
@@ -30,10 +29,54 @@ class UofUCatalogParser(CatalogParser):
 
         return sorted(numbers, key=lambda x: int(re.sub(r"[A-Z]", "", x)))
 
+    def is_course_page(self, html: str) -> bool:
+        """
+        Return True if the HTML looks like a real course detail page rather than
+        a stub (e.g. a page for a section that doesn't exist, or a rate-limit
+        page). A genuine course detail page always has an <h1> with the course
+        name; stubs do not.
+        """
+        soup = BeautifulSoup(html, "lxml")
+        h1 = soup.find("h1")
+        if not h1:
+            return False
+        # The department/section listing pages also have an <h1>, but it reads
+        # like "Main Campus - Fall 2026 Class Schedule". A real course page's
+        # <h1> starts with a course code like "CS 4400".
+        h1_text = h1.get_text(" ").strip()
+        return bool(re.match(r"[A-Z]+\s+\d{4}[A-Z]?", h1_text))
+
+    def get_section_number(self, html: str) -> str | None:
+        """
+        Parse a U of U section listing page and return the first section number,
+        e.g. "010". Returns None if the page has no section rows (course has no
+        scheduled sections this term).
+        """
+        soup  = BeautifulSoup(html, "lxml")
+        table = soup.find("table")
+        if not table:
+            return None
+
+        body = table.find("tbody")
+        if not body:
+            return None
+
+        first_row = body.find("tr")
+        if not first_row:
+            return None
+
+        section_cell = first_row.find("td", attrs={"data-label": "Section"})
+        if not section_cell:
+            return None
+
+        section = section_cell.get_text(strip=True)
+        return section or None
+
     def parse_course_detail(self, html: str, department_code: str) -> Course | None:
         """
         Parse a U of U course detail page and return a Course with placeholder IDs.
-        Returns None if required fields cannot be extracted.
+        Returns None if required fields cannot be extracted. Every failure path
+        logs a warning identifying where parsing stopped.
         """
         try:
             soup = BeautifulSoup(html, "lxml")
@@ -41,28 +84,45 @@ class UofUCatalogParser(CatalogParser):
             # ── Course name and number ────────────────────────────────────────
             h1 = soup.find("h1")
             if not h1:
+                logging.warning(
+                    f"{department_code}: parse failed — no <h1> element on page "
+                    f"(html length {len(html)})."
+                )
                 return None
 
-            h1_text    = h1.get_text(" ")
-            name_match = re.match(r"[A-Z]+\s+(\d{4}[A-Z]?)\s*[-–]?\s*(.*)", h1_text.strip())
+            h1_text    = h1.get_text(" ").strip()
+            name_match = re.match(r"[A-Z]+\s+(\d{4}[A-Z]?)\s*[-–]?\s*(.*)", h1_text, re.DOTALL)
             if not name_match:
+                logging.warning(
+                    f"{department_code}: parse failed — <h1> did not match expected "
+                    f"course pattern. h1 text was: {h1_text!r}"
+                )
                 return None
 
             course_number = name_match.group(1).strip()
             course_name   = name_match.group(2).strip() or f"{department_code} {course_number}"
+            # Collapse any internal whitespace/newlines in the name
+            course_name   = re.sub(r"\s+", " ", course_name)
 
             # ── Units ─────────────────────────────────────────────────────────
-            # Units live in the only <span class="col"> on the page
             units_span   = soup.find("span", class_="col")
             course_units = 0.0
             if units_span:
                 try:
                     course_units = float(units_span.get_text(strip=True))
                 except ValueError:
+                    logging.warning(
+                        f"{department_code} {course_number}: could not parse units "
+                        f"from {units_span.get_text(strip=True)!r}, defaulting to 0.0."
+                    )
                     course_units = 0.0
+            else:
+                logging.warning(
+                    f"{department_code} {course_number}: no units span found, "
+                    f"defaulting to 0.0."
+                )
 
             # ── Enrollment requirement ────────────────────────────────────────
-            # Find the Enrollment Information card and extract the prereq span
             raw_prerequisites_string = ""
             enrollment_body = self._find_card_body(soup, "Enrollment Information")
             if enrollment_body:
@@ -71,7 +131,6 @@ class UofUCatalogParser(CatalogParser):
                     raw_prerequisites_string = req_span.get_text(strip=True)
 
             # ── Description ───────────────────────────────────────────────────
-            # Find the Description card and extract the text from the col div
             course_description = ""
             desc_body = self._find_card_body(soup, "Description")
             if desc_body:
@@ -80,7 +139,7 @@ class UofUCatalogParser(CatalogParser):
                     course_description = desc_col.get_text(strip=True)[:2000]
 
             # ── Prerequisite course codes ─────────────────────────────────────
-            prerequisite_codes = frozenset(self.parse_prerequisites(raw_prerequisites_string))
+            prerequisite_codes = self.parse_prerequisites(raw_prerequisites_string)
 
             return Course(
                 department_id=-1,
@@ -97,35 +156,29 @@ class UofUCatalogParser(CatalogParser):
             )
 
         except Exception as e:
-            logging.warning(f"Failed to parse course detail for {department_code}: {e}")
+            # Best effort: try to pull an h1 for identification before giving up.
+            identifier = department_code
+            try:
+                h1 = BeautifulSoup(html, "lxml").find("h1")
+                if h1:
+                    identifier = f"{department_code} (h1: {h1.get_text(' ').strip()!r})"
+            except Exception:
+                pass
+            logging.warning(
+                f"{identifier}: parse failed with unexpected error — "
+                f"{type(e).__name__}: {e}",
+                exc_info=True,
+            )
             return None
 
-    def parse_prerequisites(self, raw_prerequisite_string: str) -> set[str]:
+    def parse_prerequisites(self, raw_prerequisite_string: str) -> frozenset[str]:
         """
         Extract course codes from a raw prerequisite string.
-        Returns a set of course code strings e.g. {"CS2420", "MATH2270"}.
+        Returns a frozenset of course code strings e.g. {"CS2420", "MATH2270"}.
         Non-course requirements like 'instructor consent' are discarded.
         """
-        courses = set()
-
-        # Match full patterns like "CS 2420" or "MATH 1210"
-        pattern = re.findall(r'\b([A-Z]{2,4})\s*(\d{3,4})\b', raw_prerequisite_string)
-
-        last_subject = None
-
-        for subject, number in pattern:
-            last_subject = subject
-            courses.add(f"{subject}{number}")
-
-        # Handle chained numbers like "MATH 1050 OR 1060 OR 1080"
-        chain_pattern = re.findall(r'\b([A-Z]{2,4})\s*((?:\d{3,4}(?:\s*OR\s*)?)+)', raw_prerequisite_string)
-
-        for subject, numbers_str in chain_pattern:
-            numbers = re.findall(r'\d{3,4}', numbers_str)
-            for num in numbers:
-                courses.add(f"{subject}{num}")
-
-        return courses
+        matches = COURSE_CODE_RE.findall(raw_prerequisite_string)
+        return frozenset(f"{dept}{number}" for dept, number in matches)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
