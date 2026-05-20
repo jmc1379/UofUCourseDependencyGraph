@@ -6,9 +6,10 @@ from src.scraping.CatalogFetcher import CatalogFetcher
 # 1266 = Summer 2026
 # 1268 = Fall 2026
 
+
 class UofUCatalogFetcher(CatalogFetcher):
-    def __init__(self, term: str, semaphore: int = 5):
-        super().__init__(semaphore)
+    def __init__(self, term: str, semaphore: int = 5, request_delay: float = 0.3):
+        super().__init__(semaphore=semaphore, request_delay=request_delay)
         self.term = term
 
     def _construct_course_url(self, department_code: str, course_number: str, section: str) -> str:

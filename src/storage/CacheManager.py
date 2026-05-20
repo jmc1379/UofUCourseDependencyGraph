@@ -223,6 +223,15 @@ class CacheManager:
         """
         Delete all courses and their prerequisite relationships for a department.
         Useful before a full re-scrape of a department.
+
+        Note: prerequisite rows are deleted where a course in this department
+        appears on EITHER side of the relationship — as the dependent course
+        OR as the prerequisite. This means clearing one department also removes
+        prerequisite links that other departments' courses had pointing into
+        it. Those links are restored when the other departments are re-scraped
+        (pass 2). If you clear a single department in isolation without
+        re-scraping the departments that depend on it, those cross-department
+        links will be lost until those departments are re-scraped.
         """
         department = self.get_department_by_code(department_code)
         if department is None:
@@ -230,14 +239,20 @@ class CacheManager:
 
         department_id = department["department_id"]
 
-        # Prerequisites must be deleted first to respect foreign key constraints
+        # Delete prerequisite rows where a course in this department appears on
+        # either side — as course_id (dependent) or prerequisite_id (prereq).
+        # Both must go, or the courses delete below fails the FK constraint.
         self.cursor.execute(
             """
-            DELETE FROM prerequisites WHERE course_id IN (
+            DELETE FROM prerequisites
+            WHERE course_id IN (
+                SELECT course_id FROM courses WHERE department_id = ?
+            )
+            OR prerequisite_id IN (
                 SELECT course_id FROM courses WHERE department_id = ?
             )
             """,
-            (department_id,)
+            (department_id, department_id)
         )
         self.cursor.execute(
             "DELETE FROM courses WHERE department_id = ?",

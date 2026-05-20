@@ -4,14 +4,29 @@ from abc import ABC, abstractmethod
 
 import aiohttp
 
-MAX_RETRIES        = 5
-REQUEST_DELAY      = 0.3    # polite delay between successful requests (seconds)
+MAX_RETRIES        = 3
 RATE_LIMIT_BACKOFF = 2.0    # base seconds for exponential backoff when rate limited
 
 
+class BlockedError(Exception):
+    """
+    Raised when the server responds with HTTP 403 — the client is being
+    actively blocked. This is non-recoverable within the run; the pipeline
+    catches this at the top level and aborts cleanly.
+    """
+    def __init__(self, url: str):
+        super().__init__(f"Blocked by server (HTTP 403): {url}")
+        self.url = url
+
+
 class CatalogFetcher(ABC):
-    def __init__(self, semaphore: int = 5):
-        self.semaphore = asyncio.Semaphore(semaphore)
+    def __init__(self, semaphore: int = 5, request_delay: float = 0.3):
+        """
+        - semaphore: maximum concurrent in-flight requests.
+        - request_delay: polite pause (seconds) after every successful request.
+        """
+        self.semaphore     = asyncio.Semaphore(semaphore)
+        self.request_delay = request_delay
         self.session: aiohttp.ClientSession | None = None
 
     # ─── Context Manager ──────────────────────────────────────────────────────
@@ -52,8 +67,12 @@ class CatalogFetcher(ABC):
     async def _fetch(self, url: str, label: str) -> str | None:
         """
         Core fetch method with retry logic, error handling, and rate-limit
-        detection. HTTP 429 responses are retried with exponential backoff
-        rather than treated as a normal failure.
+        detection.
+
+        - HTTP 200: returned as text.
+        - HTTP 429: retried with exponential backoff (rate limited).
+        - HTTP 403: raises BlockedError immediately, halting the entire run.
+        - Other failures: retried with the standard polite delay.
         """
         for attempt in range(MAX_RETRIES):
             rate_limited = False
@@ -62,7 +81,7 @@ class CatalogFetcher(ABC):
                     async with self.session.get(url) as response:
                         if response.status == 200:
                             html = await response.text()
-                            await asyncio.sleep(REQUEST_DELAY)
+                            await asyncio.sleep(self.request_delay)
                             return html
                         elif response.status == 429:
                             rate_limited = True
@@ -70,6 +89,12 @@ class CatalogFetcher(ABC):
                                 f"{label}: HTTP 429 (rate limited) "
                                 f"on attempt {attempt + 1}/{MAX_RETRIES}."
                             )
+                        elif response.status == 403:
+                            logging.error(
+                                f"{label}: HTTP 403 (forbidden) — server is "
+                                f"actively blocking requests. Aborting scrape."
+                            )
+                            raise BlockedError(url)
                         else:
                             logging.warning(
                                 f"{label}: HTTP {response.status} "
@@ -90,7 +115,7 @@ class CatalogFetcher(ABC):
                     logging.info(f"{label}: backing off {backoff:.1f}s before retry.")
                     await asyncio.sleep(backoff)
                 else:
-                    await asyncio.sleep(REQUEST_DELAY)
+                    await asyncio.sleep(self.request_delay)
 
         logging.error(f"{label}: all {MAX_RETRIES} attempts failed, skipping.")
         return None

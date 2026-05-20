@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable
 
 from src.models.Course import Course
-from src.scraping.CatalogFetcher import CatalogFetcher
+from src.scraping.CatalogFetcher import CatalogFetcher, BlockedError
 from src.scraping.CatalogParser import CatalogParser
 from src.scraping.UofUCatalogFetcher import UofUCatalogFetcher
 from src.scraping.UofUCatalogParser import UofUCatalogParser
@@ -21,23 +21,26 @@ class Pipeline:
         self,
         term: str,
         semaphore: int = 5,
+        request_delay: float = 0.3,
         cache_factory: Callable[[], CacheManager] | None = None,
         fetcher_factory: Callable[[], CatalogFetcher] | None = None,
         parser_factory: Callable[[], CatalogParser] | None = None,
     ):
         """
-        Construct a Pipeline. The factory parameters allow tests to inject
-        custom implementations without changing production code.
+        Construct a Pipeline.
 
-        - cache_factory:   () -> CacheManager (defaults to real CacheManager)
-        - fetcher_factory: () -> CatalogFetcher (defaults to UofUCatalogFetcher)
-        - parser_factory:  () -> CatalogParser  (defaults to UofUCatalogParser)
+        - semaphore:      max concurrent in-flight requests.
+        - request_delay:  polite pause (seconds) between requests.
+        - *_factory:      dependency injection seams for testing.
         """
-        self.term      = term
-        self.semaphore = semaphore
+        self.term          = term
+        self.semaphore     = semaphore
+        self.request_delay = request_delay
 
         self._cache_factory   = cache_factory   or (lambda: CacheManager())
-        self._fetcher_factory = fetcher_factory or (lambda: UofUCatalogFetcher(term=term, semaphore=semaphore))
+        self._fetcher_factory = fetcher_factory or (
+            lambda: UofUCatalogFetcher(term=term, semaphore=semaphore, request_delay=request_delay)
+        )
         self._parser_factory  = parser_factory  or (lambda: UofUCatalogParser())
 
         self._configure_logging()
@@ -54,8 +57,8 @@ class Pipeline:
             format="%(asctime)s  %(levelname)-8s %(name)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             handlers=[
-                logging.StreamHandler(),                 # console
-                logging.FileHandler(log_path, mode="a"), # file
+                logging.StreamHandler(),
+                logging.FileHandler(log_path, mode="a"),
             ],
         )
 
@@ -65,11 +68,25 @@ class Pipeline:
         """
         Scrape the given departments and populate the database.
         If refresh is True, existing department data is cleared first.
+
+        If the server returns HTTP 403 at any point, the run is aborted
+        immediately and BlockedError is logged. No further requests are made.
         """
-        logging.info(f"Starting scrape for departments: {', '.join(department_codes)}")
+        logging.info(
+            f"Starting scrape for departments: {', '.join(department_codes)} "
+            f"(semaphore={self.semaphore}, delay={self.request_delay}s)"
+        )
         try:
             asyncio.run(self._scrape_async(department_codes, refresh))
             logging.info("Scrape completed successfully.")
+        except BlockedError as e:
+            logging.error(
+                f"Scrape aborted — server returned HTTP 403. "
+                f"Stopping all further requests to avoid risk of a ban. "
+                f"Offending URL: {e.url}"
+            )
+            # Intentionally do NOT re-raise. A 403 isn't a programming error
+            # to crash on — it's a "stop now" signal we honored cleanly.
         except Exception as e:
             logging.error(f"Scrape failed: {e}", exc_info=True)
             raise
@@ -150,6 +167,9 @@ class Pipeline:
         Fetch and parse a single course. Tries section 001 first; if that page
         is a stub (no real course content), looks up a valid section from the
         course's section listing page and retries. Returns a Course or None.
+
+        BlockedError propagates up — we let the entire scrape abort if the
+        server starts returning 403.
         """
         # ── First attempt: section 001 ────────────────────────────────────────
         html = await self.fetcher.fetch_course(department_code, course_number, section="001")
