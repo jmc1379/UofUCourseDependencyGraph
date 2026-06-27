@@ -1,20 +1,18 @@
 # UofU Course Dependency Graph
 
-An extensible tool for scraping university course catalogs, building prerequisite dependency graphs and course similarity graphs, and rendering them as interactive visualizations.
+A tool that scrapes the University of Utah course catalog, stores course data in SQLite, and builds a prerequisite dependency graph (plus a course similarity graph) from it. The end goal is a Flask web app with an interactive frontend for exploring course prerequisites — built as a demo to pitch to University of Utah IT for internal adoption or direct database access in lieu of scraping.
 
-Currently targets the **University of Utah** catalog, with architecture designed to support additional universities by adding new parser subclasses.
+Architecture uses dependency injection and abstract base classes, so adding support for another university's catalog means writing a new fetcher/parser subclass rather than modifying existing code.
 
 ---
 
-## Features
+## Current Status
 
-- Scrapes all courses for any department (or the entire university) from the U of U class schedule
-- Parses prerequisite strings including AND/OR logic and cross-department references
-- Builds a **prerequisite dependency graph** using adjacency list
-- Builds a **course similarity graph** using TF-IDF cosine similarity on course descriptions
-- Renders both as interactive, filterable HTML visualizations
-- Caches scraped data in SQLite to avoid redundant network requests
-- Concurrent scraping with rate limiting and per-course error tolerance
+- **Done:** scraping pipeline, SQLite storage, and graph layer (prerequisite + similarity graphs). Tested and stable.
+- **In progress:** Flask server and frontend — not yet started.
+- **Known limitation:** the live catalog has previously blocked the scraper's requests; the fetcher now sends a realistic Chrome User-Agent to work around this.
+
+See `CLAUDE.md` for the full architecture writeup, design decisions, and known issues.
 
 ---
 
@@ -23,26 +21,27 @@ Currently targets the **University of Utah** catalog, with architecture designed
 ```
 UofUCourseDependencyGraph/
 ├── src/
-│   ├── graph/
-│   │   ├── CourseGraph.py          # sparse adjacency matrix graph structure
-│   │   └── GraphAnalyzer.py        # traversal, similarity, and ranking algorithms
 │   ├── models/
-│   │   └── Course.py               # Course dataclass
-│   ├── output/
-│   │   └── WebsiteBuilder.py       # HTML graph renderer
+│   │   └── Course.py               # frozen dataclass; full course data
+│   ├── storage/
+│   │   ├── CacheManager.py         # SQLite read/write/cache — only place SQL lives
+│   │   └── schema.sql              # tables: departments, courses, prerequisites
 │   ├── scraping/
-│   │   ├── CatalogFetcher.py       # async HTTP fetching with rate limiting
-│   │   └── CatalogParser.py        # abstract base + UofU concrete parser
-│   └── storage/
-│       ├── CacheManager.py         # SQLite read/write/invalidation
-│       └── schema.sql              # database schema
+│   │   ├── CatalogFetcher.py       # abstract; async HTTP w/ retry, backoff, 403 handling
+│   │   ├── CatalogParser.py        # abstract; HTML → Course
+│   │   ├── UofUCatalogFetcher.py   # U of U-specific URL construction
+│   │   └── UofUCatalogParser.py    # U of U-specific HTML parsing
+│   ├── graph/
+│   │   ├── CourseGraph.py          # NetworkX DiGraph wrapper, built from CacheManager
+│   │   └── GraphAnalyzer.py        # traversal, depth, centrality, chains
+│   └── Pipeline.py                 # orchestrator; wires everything together
 ├── tests/                          # mirrors src/ structure
-├── fixtures/                       # saved HTML for parser unit tests
-├── data/                           # generated: SQLite db, serialized graphs
-├── output/                         # generated: HTML visualization files
-├── main.py
-├── requirements.txt
-└── README.md
+├── fixtures/                       # saved HTML pages for parser tests + offline dev
+├── data/                           # generated: UofUCourses.db, pipeline.log
+├── main.py                         # CLI entry point
+├── loadFixtures.py                 # dev utility: build DB from saved HTML fixtures
+├── dbViewer.py                     # dev utility: inspect the SQLite database
+└── requirements.txt
 ```
 
 ---
@@ -72,22 +71,31 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# Scrape and build graphs for all CS courses (uses cache if available)
+# Scrape one department
 python main.py --department CS
 
-# Force re-scrape, ignoring cache
-python main.py --department CS --refresh
-
-# Run for the entire university (slow on first run)
+# Scrape every configured department (CS, MATH, ECE, PHYS)
 python main.py --all
 
-# Specify a custom output directory
-python main.py --department CS --output ./my-output
+# Conservative speed — 1 concurrent request, 3s delay — for when the catalog is rate-limiting
+python main.py --polite --department CS
+
+# Clear cached data for the target department(s) and re-scrape
+python main.py --department CS --refresh
+
+# Custom concurrency / delay / term
+python main.py --department CS --semaphore 1 --delay 5 --term 1268
 ```
 
-Output files will appear in `output/`:
-- `prerequisite_graph.html` — open in any browser
-- `similarity_graph.html` — open in any browser
+Scraped data is cached in `data/UofUCourses.db` (SQLite). The graph is rebuilt from the database on every run — there's no separate serialized graph file.
+
+### Offline development
+
+```bash
+python loadFixtures.py
+```
+
+Builds the database from saved HTML fixtures in `fixtures/` instead of hitting the live catalog. Useful when the site is unavailable or you don't want to make live requests while iterating.
 
 ---
 
@@ -99,26 +107,14 @@ pytest --cov=src                # with coverage report
 pytest tests/scraping/          # run a specific module's tests
 ```
 
----
-
-## Adding Support for a New University
-
-1. Create a new subclass of `CatalogParser` in `src/scraping/CatalogParser.py`
-2. Implement the required interface methods (`get_course_list`, `parse_course_detail`, `parse_prerequisites`)
-3. Save HTML fixture files for the new catalog in `fixtures/`
-4. Write unit tests in `tests/scraping/`
-5. Wire the new parser into `main.py` via a `--university` flag
-
-No existing classes need to be modified.
+Tests use in-memory SQLite and saved HTML fixtures — no real network calls.
 
 ---
 
-## Contributing
+## Roadmap
 
-See `CONTRIBUTING.md` for coding standards, branch naming conventions, and PR guidelines.
-
----
-
-## License
-
-MIT
+1. Flask server (`/graph`, `/course/<code>`, `/search`, `/prerequisites/<code>` endpoints)
+2. Frontend graph visualization (vis.js, color-coded by course level)
+3. Search bar, clickable nodes, filter controls
+4. Full-university data + polish
+5. Demo prep
