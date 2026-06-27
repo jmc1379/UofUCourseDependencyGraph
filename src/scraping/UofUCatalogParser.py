@@ -5,11 +5,20 @@ import re
 from bs4 import BeautifulSoup
 
 from src.models.Course import Course
-from src.scraping.CatalogParser import CatalogParser, COURSE_CODE_RE
+from src.scraping.CatalogParser import CatalogParser
 
 # Matches course numbers in U of U department list page links
 # e.g. sections.html?subj=CS&catno=3500
 COURSE_LIST_RE = re.compile(r"sections\.html\?subj=\w+&catno=(\d{4}[A-Z]?)")
+
+# Matches a department-qualified course code (e.g. "MATH 1060"), or a bare
+# course number chained onto a preceding department via "OR" (e.g. "OR 1080"
+# in "MATH 1050 OR 1060 OR 1080"). The department group excludes "OR"/"AND"
+# so the connector word itself is never mistaken for a course code — U of U
+# prereq strings list alternatives without repeating the department prefix.
+PREREQUISITE_CODE_RE = re.compile(
+    r"\b(?:(?!OR\b|AND\b)([A-Z]{2,})\s+(\d{4}[A-Z]?)|OR\s+(\d{4}[A-Z]?))\b"
+)
 
 
 class UofUCatalogParser(CatalogParser):
@@ -176,9 +185,21 @@ class UofUCatalogParser(CatalogParser):
         Extract course codes from a raw prerequisite string.
         Returns a frozenset of course code strings e.g. {"CS2420", "MATH2270"}.
         Non-course requirements like 'instructor consent' are discarded.
+
+        Bare course numbers chained with "OR" onto a preceding department-
+        qualified course (e.g. "MATH 1050 OR 1060 OR 1080") inherit that
+        department, since the catalog doesn't repeat the prefix for each
+        alternative.
         """
-        matches = COURSE_CODE_RE.findall(raw_prerequisite_string)
-        return frozenset(f"{dept}{number}" for dept, number in matches)
+        codes = set()
+        last_department = None
+        for dept, number, bare_number in PREREQUISITE_CODE_RE.findall(raw_prerequisite_string):
+            if dept:
+                last_department = dept
+                codes.add(f"{dept}{number}")
+            elif last_department:
+                codes.add(f"{last_department}{bare_number}")
+        return frozenset(codes)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 

@@ -79,6 +79,79 @@ class TestGetCourseList:
         assert result == []
 
 
+# ─── is_course_page ───────────────────────────────────────────────────────────
+
+class TestIsCoursePage:
+
+    def test_true_for_real_course_detail_page(self, parser, cs_1400_html):
+        assert parser.is_course_page(cs_1400_html) is True
+
+    def test_false_for_department_listing_page(self, parser, course_list_html):
+        """The listing page has its own <h1>, but it isn't a course-code header."""
+        assert parser.is_course_page(course_list_html) is False
+
+    def test_false_when_no_h1(self, parser):
+        assert parser.is_course_page("<html><body><p>no header here</p></body></html>") is False
+
+    def test_false_for_empty_html(self, parser):
+        assert parser.is_course_page("") is False
+
+    def test_false_when_h1_does_not_match_course_pattern(self, parser):
+        html = "<html><body><h1>Main Campus - Fall 2026 Class Schedule</h1></body></html>"
+        assert parser.is_course_page(html) is False
+
+    def test_true_when_h1_has_extra_nested_spans(self, parser):
+        html = "<html><body><h1><span>CS 4400</span> - <span>Computer Systems</span></h1></body></html>"
+        assert parser.is_course_page(html) is True
+
+
+# ─── get_section_number ───────────────────────────────────────────────────────
+
+class TestGetSectionNumber:
+
+    def test_returns_first_section_number(self, parser):
+        html = """
+        <html><body>
+          <table><tbody>
+            <tr><td data-label="Section">010</td></tr>
+            <tr><td data-label="Section">020</td></tr>
+          </tbody></table>
+        </body></html>
+        """
+        assert parser.get_section_number(html) == "010"
+
+    def test_returns_none_when_no_table(self, parser):
+        assert parser.get_section_number("<html><body>no sections</body></html>") is None
+
+    def test_returns_none_when_no_tbody(self, parser):
+        html = "<html><body><table></table></body></html>"
+        assert parser.get_section_number(html) is None
+
+    def test_returns_none_when_tbody_has_no_rows(self, parser):
+        html = "<html><body><table><tbody></tbody></table></body></html>"
+        assert parser.get_section_number(html) is None
+
+    def test_returns_none_when_row_has_no_section_cell(self, parser):
+        html = """
+        <html><body>
+          <table><tbody>
+            <tr><td data-label="Instructor">Smith</td></tr>
+          </tbody></table>
+        </body></html>
+        """
+        assert parser.get_section_number(html) is None
+
+    def test_returns_none_when_section_cell_is_empty(self, parser):
+        html = """
+        <html><body>
+          <table><tbody>
+            <tr><td data-label="Section"></td></tr>
+          </tbody></table>
+        </body></html>
+        """
+        assert parser.get_section_number(html) is None
+
+
 # ─── parse_course_detail — CS 1400 (no CS prereqs, MATH prereqs) ─────────────
 
 class TestParseCourseDetailCS1400:
@@ -281,9 +354,9 @@ class TestParsePrerequisites:
         )
         assert result == {"CS2420"}
 
-    def test_returns_set_not_list(self, parser):
+    def test_returns_frozenset_not_list(self, parser):
         result = parser.parse_prerequisites("Prerequisites: CS 2420")
-        assert isinstance(result, set)
+        assert isinstance(result, frozenset)
 
     def test_duplicate_courses_deduplicated(self, parser):
         result = parser.parse_prerequisites(
@@ -305,5 +378,29 @@ class TestParsePrerequisites:
             "1215 OR 1250 OR 1310 OR 1311 OR Higher Math"
         )
         result = parser.parse_prerequisites(prereq)
-        # Only "MATH 1050" is a fully qualified code — the rest lack a department prefix
-        assert "MATH1050" in result
+        # Bare numbers chained with "OR" inherit the preceding department.
+        assert result == {
+            "MATH1050", "MATH1060", "MATH1080", "MATH1210",
+            "MATH1215", "MATH1250", "MATH1310", "MATH1311",
+        }
+
+    def test_or_chain_does_not_treat_or_as_a_department(self, parser):
+        """Regression test: "OR 1060" must not become the bogus code "OR1060"."""
+        result = parser.parse_prerequisites("Prerequisites: MATH 1050 OR 1060 OR 1080")
+        assert result == {"MATH1050", "MATH1060", "MATH1080"}
+        assert not any(code.startswith("OR") for code in result)
+
+    def test_or_chain_switches_department_mid_chain(self, parser):
+        result = parser.parse_prerequisites(
+            "Prerequisites: CS 1410 OR CS 1420 OR MATH 1210 OR 1220"
+        )
+        assert result == {"CS1410", "CS1420", "MATH1210", "MATH1220"}
+
+    def test_bare_number_with_no_preceding_department_discarded(self, parser):
+        """A bare number before any department-qualified code has nothing to inherit."""
+        result = parser.parse_prerequisites("Prerequisites: 1060 OR MATH 1080")
+        assert result == {"MATH1080"}
+
+    def test_and_is_not_mistaken_for_a_department(self, parser):
+        result = parser.parse_prerequisites("Prerequisites: CS 2420 AND 2100")
+        assert result == {"CS2420"}

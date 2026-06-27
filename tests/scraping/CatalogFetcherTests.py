@@ -4,6 +4,7 @@ import aiohttp
 import pytest
 import pytest_asyncio
 
+from src.scraping.CatalogFetcher import MAX_RETRIES
 from src.scraping.UofUCatalogFetcher import UofUCatalogFetcher
 
 TERM        = "1258"
@@ -58,11 +59,16 @@ class TestUofUUrlConstruction:
 
     def test_construct_course_url(self):
         f = UofUCatalogFetcher(term=TERM)
-        url = f._construct_course_url(DEPARTMENT, COURSE_NUM)
+        url = f._construct_course_url(DEPARTMENT, COURSE_NUM, "001")
         assert url == (
             f"https://class-schedule.app.utah.edu/main/{TERM}"
             f"/description.html?subj={DEPARTMENT}&catno={COURSE_NUM}&section=001"
         )
+
+    def test_construct_course_url_with_non_default_section(self):
+        f = UofUCatalogFetcher(term=TERM)
+        url = f._construct_course_url(DEPARTMENT, COURSE_NUM, "010")
+        assert "section=010" in url
 
     def test_construct_department_list_url(self):
         f = UofUCatalogFetcher(term=TERM)
@@ -74,12 +80,12 @@ class TestUofUUrlConstruction:
 
     def test_course_url_changes_with_term(self):
         f = UofUCatalogFetcher(term="1264")
-        url = f._construct_course_url(DEPARTMENT, COURSE_NUM)
+        url = f._construct_course_url(DEPARTMENT, COURSE_NUM, "001")
         assert "1264" in url
 
     def test_course_url_changes_with_department(self):
         f = UofUCatalogFetcher(term=TERM)
-        url = f._construct_course_url("MATH", "2270")
+        url = f._construct_course_url("MATH", "2270", "001")
         assert "MATH" in url
         assert "2270" in url
 
@@ -142,7 +148,7 @@ class TestFetchCourse:
         response = make_mock_response(status=503)
         mock_session.get = MagicMock(return_value=response)
         await fetcher.fetch_course(DEPARTMENT, COURSE_NUM)
-        assert response.__aenter__.call_count == 5   # MAX_RETRIES
+        assert response.__aenter__.call_count == MAX_RETRIES
 
     @pytest.mark.asyncio
     async def test_logs_warning_on_failed_attempt(self, fetcher, mock_session):
@@ -182,58 +188,36 @@ class TestFetchDepartmentList:
             mock_url.assert_called_once_with(DEPARTMENT)
 
 
-# ─── fetch_department ─────────────────────────────────────────────────────────
+# ─── fetch_sections ───────────────────────────────────────────────────────────
+# Multi-course/department orchestration (formerly fetch_department/fetch_all
+# on the fetcher) now lives in Pipeline._scrape_async and is covered by
+# PipelineTests.py. fetch_sections, used for the section-001 fallback, had no
+# coverage at all.
 
-class TestFetchDepartment:
+class TestFetchSections:
+
+    def test_construct_sections_url(self):
+        f = UofUCatalogFetcher(term=TERM)
+        url = f._construct_sections_url(DEPARTMENT, COURSE_NUM)
+        assert url == (
+            f"https://class-schedule.app.utah.edu/main/{TERM}"
+            f"/sections.html?subj={DEPARTMENT}&catno={COURSE_NUM}"
+        )
 
     @pytest.mark.asyncio
-    async def test_returns_list_of_html_strings(self, fetcher, mock_session):
+    async def test_returns_html_on_success(self, fetcher, mock_session):
         mock_session.get = MagicMock(return_value=make_mock_response(200, SAMPLE_HTML))
-        results = await fetcher.fetch_department(DEPARTMENT, ["3500", "2420"])
-        assert len(results) == 2
-        assert all(r == SAMPLE_HTML for r in results)
+        result = await fetcher.fetch_sections(DEPARTMENT, COURSE_NUM)
+        assert result == SAMPLE_HTML
 
     @pytest.mark.asyncio
-    async def test_filters_out_failed_fetches(self, fetcher):
-        async def mock_fetch_course(dept, num):
-            return SAMPLE_HTML if num == "3500" else None
-
-        fetcher.fetch_course = mock_fetch_course
-        results = await fetcher.fetch_department(DEPARTMENT, ["3500", "9999"])
-        assert len(results) == 1
-        assert results[0] == SAMPLE_HTML
+    async def test_returns_none_on_failure(self, fetcher, mock_session):
+        mock_session.get = MagicMock(return_value=make_mock_response(status=404))
+        result = await fetcher.fetch_sections(DEPARTMENT, COURSE_NUM)
+        assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_empty_list_when_all_fail(self, fetcher, mock_session):
-        mock_session.get = MagicMock(return_value=make_mock_response(status=500))
-        results = await fetcher.fetch_department(DEPARTMENT, ["3500", "2420"])
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_empty_course_numbers_returns_empty_list(self, fetcher):
-        results = await fetcher.fetch_department(DEPARTMENT, [])
-        assert results == []
-
-
-# ─── fetch_all ────────────────────────────────────────────────────────────────
-
-class TestFetchAll:
-
-    @pytest.mark.asyncio
-    async def test_returns_dict_with_all_departments(self, fetcher, mock_session):
-        mock_session.get   = MagicMock(return_value=make_mock_response(200, SAMPLE_HTML))
-        department_map = {"CS": ["3500"], "MATH": ["2270"]}
-        results = await fetcher.fetch_all(department_map)
-        assert "CS" in results
-        assert "MATH" in results
-
-    @pytest.mark.asyncio
-    async def test_empty_department_map_returns_empty_dict(self, fetcher):
-        results = await fetcher.fetch_all({})
-        assert results == {}
-
-    @pytest.mark.asyncio
-    async def test_failed_department_returns_empty_list(self, fetcher, mock_session):
-        mock_session.get = MagicMock(return_value=make_mock_response(status=500))
-        results = await fetcher.fetch_all({"CS": ["3500"]})
-        assert results["CS"] == []
+    async def test_uses_sections_url(self, fetcher):
+        with patch.object(fetcher, "_construct_sections_url", return_value="http://fake-url") as mock_url:
+            await fetcher.fetch_sections(DEPARTMENT, COURSE_NUM)
+            mock_url.assert_called_once_with(DEPARTMENT, COURSE_NUM)
