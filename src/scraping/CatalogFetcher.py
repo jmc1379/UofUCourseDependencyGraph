@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from abc import ABC, abstractmethod
 
 import aiohttp
@@ -32,7 +33,15 @@ class CatalogFetcher(ABC):
     # ─── Context Manager ──────────────────────────────────────────────────────
 
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                )
+            }
+        )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -62,6 +71,15 @@ class CatalogFetcher(ABC):
         """Construct the URL for a course's section listing page."""
         pass
 
+    # ─── Timing helper ────────────────────────────────────────────────────────
+
+    def _polite_delay(self) -> float:
+        """
+        Return a slightly jittered delay (±20%) so the request cadence
+        isn't perfectly regular — less obvious to behavior-based bot detection.
+        """
+        return random.uniform(self.request_delay * 0.8, self.request_delay * 1.2)
+
     # ─── Shared Fetch Logic ───────────────────────────────────────────────────
 
     async def _fetch(self, url: str, label: str) -> str | None:
@@ -81,7 +99,7 @@ class CatalogFetcher(ABC):
                     async with self.session.get(url) as response:
                         if response.status == 200:
                             html = await response.text()
-                            await asyncio.sleep(self.request_delay)
+                            await asyncio.sleep(self._polite_delay())
                             return html
                         elif response.status == 429:
                             rate_limited = True
@@ -115,7 +133,7 @@ class CatalogFetcher(ABC):
                     logging.info(f"{label}: backing off {backoff:.1f}s before retry.")
                     await asyncio.sleep(backoff)
                 else:
-                    await asyncio.sleep(self.request_delay)
+                    await asyncio.sleep(self._polite_delay())
 
         logging.error(f"{label}: all {MAX_RETRIES} attempts failed, skipping.")
         return None

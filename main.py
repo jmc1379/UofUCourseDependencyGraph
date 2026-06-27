@@ -7,7 +7,7 @@ from src.Pipeline import Pipeline
 # 1264 = Spring 2026
 # 1266 = Summer 2026
 # 1268 = Fall 2026
-DEFAULT_TERM = "1258"
+DEFAULT_TERM = "1268"
 
 # Departments scraped when --all is passed.
 # Expand this list as more departments are supported.
