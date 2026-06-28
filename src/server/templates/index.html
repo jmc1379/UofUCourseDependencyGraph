@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Course Dependency Graph</title>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>Course Dependency Graph</h1>
+
+  <input id="course-code" type="text" placeholder="e.g. CS4400" value="CS4400">
+  <button id="load-btn">Load</button>
+
+  <div id="network" style="width: 100%; height: 600px; border: 1px solid #ccc;"></div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

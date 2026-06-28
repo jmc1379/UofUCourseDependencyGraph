@@ -18,6 +18,9 @@ scikit-learn>=1.4.0             # TF-IDF vectorization, cosine similarity
 # ─── Visualization ────────────────────────────────────────────────────────────
 pyvis>=0.3.2                    # interactive HTML graph output
 
+# ─── Web Server ───────────────────────────────────────────────────────────────
+flask>=3.0.0                    # serves the API + frontend
+
 # ─── Testing ──────────────────────────────────────────────────────────────────
 pytest>=8.0.0
 pytest-asyncio>=0.23.0          # async test support

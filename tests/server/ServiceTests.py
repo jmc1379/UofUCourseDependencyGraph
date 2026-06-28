@@ -1,0 +1,30 @@
+# ─── prereq_subgraph ────────────────────────────────────────────────────────────
+
+class TestPrereqSubgraph:
+
+    def test_returns_none_for_unknown_course(self, graph_service):
+        assert graph_service.prereq_subgraph("CS0000") is None
+
+    def test_course_with_no_prereqs_returns_itself_only(self, graph_service):
+        subgraph = graph_service.prereq_subgraph("CS1400")
+        assert set(subgraph.nodes) == {"CS1400"}
+        assert subgraph.number_of_edges() == 0
+
+    def test_includes_transitive_prerequisites(self, graph_service):
+        subgraph = graph_service.prereq_subgraph("CS3500")
+        assert set(subgraph.nodes) == {"CS1400", "CS2420", "CS3500"}
+
+    def test_preserves_edges_within_subgraph(self, graph_service):
+        subgraph = graph_service.prereq_subgraph("CS3500")
+        assert set(subgraph.edges) == {("CS1400", "CS2420"), ("CS2420", "CS3500")}
+
+    def test_isolated_course_has_no_edges(self, graph_service):
+        subgraph = graph_service.prereq_subgraph("CS9999")
+        assert set(subgraph.nodes) == {"CS9999"}
+        assert subgraph.number_of_edges() == 0
+
+    def test_does_not_include_dependents(self, graph_service):
+        """CS2420's subgraph should include its prereq CS1400, but not its dependent CS3500."""
+        subgraph = graph_service.prereq_subgraph("CS2420")
+        assert set(subgraph.nodes) == {"CS1400", "CS2420"}
+        assert "CS3500" not in subgraph.nodes

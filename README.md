@@ -9,7 +9,7 @@ Architecture uses dependency injection and abstract base classes, so adding supp
 ## Current Status
 
 - **Done:** scraping pipeline, SQLite storage, and graph layer (prerequisite + similarity graphs). Tested and stable.
-- **In progress:** Flask server and frontend — not yet started.
+- **In progress:** Flask server and frontend. The `src/server/` module and its tests are scaffolded (empty files, no logic yet).
 - **Known limitation:** the live catalog has previously blocked the scraper's requests; the fetcher now sends a realistic Chrome User-Agent to work around this.
 
 See `CLAUDE.md` for the full architecture writeup, design decisions, and known issues.
@@ -34,11 +34,26 @@ UofUCourseDependencyGraph/
 │   ├── graph/
 │   │   ├── CourseGraph.py          # NetworkX DiGraph wrapper, built from CacheManager
 │   │   └── GraphAnalyzer.py        # traversal, depth, centrality, chains
+│   ├── server/                     # Flask layer (scaffolded, not yet implemented)
+│   │   ├── __init__.py             # create_app() — the factory
+│   │   ├── service.py              # GraphService — NetworkX queries live here
+│   │   ├── serialization.py        # to_vis() — DiGraph → vis-network JSON
+│   │   ├── routes.py               # the api blueprint — thin endpoints
+│   │   ├── templates/
+│   │   │   └── index.html          # the page Flask serves
+│   │   └── static/
+│   │       ├── app.js              # vis.js setup + fetch() calls to the API
+│   │       └── style.css
 │   └── Pipeline.py                 # orchestrator; wires everything together
 ├── tests/                          # mirrors src/ structure
+│   └── server/
+│       ├── conftest.py             # a tiny fixture DiGraph + a test app
+│       ├── test_service.py         # unit tests on GraphService (no Flask)
+│       └── test_routes.py          # test_client tests on the endpoints
 ├── fixtures/                       # saved HTML pages for parser tests + offline dev
 ├── data/                           # generated: UofUCourses.db, pipeline.log
-├── main.py                         # CLI entry point
+├── main.py                         # CLI entry point (scraping pipeline)
+├── run.py                          # launch entry point for the Flask server
 ├── loadFixtures.py                 # dev utility: build DB from saved HTML fixtures
 ├── dbViewer.py                     # dev utility: inspect the SQLite database
 └── requirements.txt
