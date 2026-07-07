@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 
 from src.server.serialization import to_vis
 from src.server.service import GraphService
@@ -21,3 +21,10 @@ def prerequisites(code):
         return jsonify({"error": f"Unknown course: {code}"}), 404
 
     return jsonify(to_vis(subgraph))
+
+
+@api.route("/search")
+def search():
+    """Search courses by code or title substring — the UI's search entry point."""
+    graph_service: GraphService = current_app.config["GRAPH_SERVICE"]
+    return jsonify(graph_service.search(request.args.get("q", "")))

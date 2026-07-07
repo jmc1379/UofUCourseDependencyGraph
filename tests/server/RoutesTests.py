@@ -39,3 +39,18 @@ class TestPrerequisites:
         """The route uppercases the code before querying — fixture nodes are uppercase."""
         data = client.get("/api/prerequisites/cs1400").get_json()
         assert data["nodes"] == [{"id": "CS1400", "label": "CS1400", "title": "CS1400"}]
+
+
+# ─── /api/search ──────────────────────────────────────────────────────────────────
+
+class TestSearch:
+
+    def test_returns_200(self, client):
+        assert client.get("/api/search?q=CS").status_code == 200
+
+    def test_matches_returned(self, client):
+        data = client.get("/api/search?q=2420").get_json()
+        assert {"code": "CS2420", "name": "CS2420"} in data
+
+    def test_missing_query_param_returns_empty_list(self, client):
+        assert client.get("/api/search").get_json() == []

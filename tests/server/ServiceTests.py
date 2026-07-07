@@ -28,3 +28,26 @@ class TestPrereqSubgraph:
         subgraph = graph_service.prereq_subgraph("CS2420")
         assert set(subgraph.nodes) == {"CS1400", "CS2420"}
         assert "CS3500" not in subgraph.nodes
+
+
+# ─── search ──────────────────────────────────────────────────────────────────────
+
+class TestSearch:
+
+    def test_empty_query_returns_empty_list(self, graph_service):
+        assert graph_service.search("") == []
+
+    def test_matches_by_code_substring(self, graph_service):
+        results = graph_service.search("2420")
+        assert {"code": "CS2420", "name": "CS2420"} in results
+
+    def test_case_insensitive(self, graph_service):
+        results = graph_service.search("cs2420")
+        assert {"code": "CS2420", "name": "CS2420"} in results
+
+    def test_no_match_returns_empty_list(self, graph_service):
+        assert graph_service.search("PHYS9999") == []
+
+    def test_respects_limit(self, graph_service):
+        results = graph_service.search("CS", limit=2)
+        assert len(results) == 2
