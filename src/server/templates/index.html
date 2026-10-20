@@ -19,7 +19,32 @@
       <div id="search-results"></div>
     </div>
 
-    <div id="network"></div>
+    <div class="filters">
+      <div class="filter-group" id="level-filters">
+        <span class="filter-label">Level</span>
+      </div>
+      <div class="filter-group" id="department-filters">
+        <span class="filter-label">Department</span>
+      </div>
+    </div>
+
+    <div class="graph-area">
+      <div id="network"></div>
+      <aside id="detail-panel" hidden>
+        <button id="detail-close" aria-label="Close">&times;</button>
+        <h2 id="detail-code"></h2>
+        <p class="detail-name" id="detail-name"></p>
+        <dl>
+          <dt>Units</dt><dd id="detail-units"></dd>
+          <dt>Department</dt><dd id="detail-department"></dd>
+          <dt>Status</dt><dd id="detail-status"></dd>
+        </dl>
+        <h3>Description</h3>
+        <p id="detail-description"></p>
+        <h3>Prerequisites</h3>
+        <p id="detail-prereqs"></p>
+      </aside>
+    </div>
   </main>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>

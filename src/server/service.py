@@ -22,6 +22,22 @@ class GraphService:
         nodes = ancestors | {course_code}
         return self.course_graph.G.subgraph(nodes)
 
+    def course_detail(self, course_code: str) -> dict | None:
+        """Return full course details for the UI's detail panel. None if unknown."""
+        course = self.course_graph.get_course(course_code)
+        if course is None:
+            return None
+
+        return {
+            "code": course.course_code,
+            "name": course.course_name,
+            "description": course.course_description,
+            "units": course.course_units,
+            "department": course.department_code,
+            "raw_prerequisites": course.raw_prerequisites_string,
+            "is_active": course.is_active,
+        }
+
     def search(self, query: str, limit: int = 20) -> list[dict]:
         """
         Find courses whose code or name contains query (case-insensitive).

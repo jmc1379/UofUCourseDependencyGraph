@@ -51,3 +51,27 @@ class TestSearch:
     def test_respects_limit(self, graph_service):
         results = graph_service.search("CS", limit=2)
         assert len(results) == 2
+
+
+# ─── course_detail ───────────────────────────────────────────────────────────────
+
+class TestCourseDetail:
+
+    def test_returns_none_for_unknown_course(self, graph_service):
+        assert graph_service.course_detail("CS0000") is None
+
+    def test_returns_none_when_node_has_no_course_data(self, graph_service):
+        """CS2420 is in the fixture graph but its node has course=None."""
+        assert graph_service.course_detail("CS2420") is None
+
+    def test_returns_course_fields(self, graph_service):
+        detail = graph_service.course_detail("CS1400")
+        assert detail == {
+            "code": "CS1400",
+            "name": "Fundamentals of Programming",
+            "description": "Intro to programming.",
+            "units": 4.0,
+            "department": "CS",
+            "raw_prerequisites": "",
+            "is_active": True,
+        }

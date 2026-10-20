@@ -5,12 +5,10 @@ from src.server.service import GraphService
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
-
 @api.route("/health")
 def health():
     """Trivial liveness check."""
     return jsonify({"ok": True})
-
 
 @api.route("/prerequisites/<code>")
 def prerequisites(code):
@@ -22,9 +20,18 @@ def prerequisites(code):
 
     return jsonify(to_vis(subgraph))
 
-
 @api.route("/search")
 def search():
     """Search courses by code or title substring — the UI's search entry point."""
     graph_service: GraphService = current_app.config["GRAPH_SERVICE"]
     return jsonify(graph_service.search(request.args.get("q", "")))
+
+@api.route("/course/<code>")
+def course_detail(code):
+    """Return full details for a single course, for the UI's detail panel."""
+    graph_service: GraphService = current_app.config["GRAPH_SERVICE"]
+    detail = graph_service.course_detail(code.upper())
+    if detail is None:
+        return jsonify({"error": f"Unknown course: {code}"}), 404
+
+    return jsonify(detail)

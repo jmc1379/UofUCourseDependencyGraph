@@ -1,9 +1,19 @@
 :root {
-  --u-red: #CC0000;
-  --u-red-dark: #990000;
-  --u-black: #1A1A1A;
-  --u-gray: #f5f5f5;
-  --u-border: #d8d8d8;
+  /* University of Utah brand colors — brand.utah.edu */
+  --u-red: #BE0000;
+  --u-red-dark: #890000;
+  --u-black: #000000;
+  --u-gray: #E2E6E6;        /* Salt Flat Grey */
+  --u-border: #d3d7d7;
+  --u-text-gray: #707271;   /* Zion Cinder Cone */
+
+  /* course-level palette, drawn from the U secondary brand colors */
+  --level-1000: #3ABFC0;    /* Great Salt Lake */
+  --level-2000: #6CC24A;    /* Mountain Green */
+  --level-3000: #FFB81D;    /* Wasatch Sunrise */
+  --level-4000: #708E99;    /* Granite Peak */
+  --level-5000: #890000;    /* Red Rocks */
+  --level-other: #707271;   /* Zion Cinder Cone */
 }
 
 * {
@@ -50,7 +60,7 @@ main {
   position: relative;
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 #course-code {
@@ -65,7 +75,7 @@ main {
 #course-code:focus {
   outline: none;
   border-color: var(--u-red);
-  box-shadow: 0 0 0 2px rgba(204, 0, 0, 0.15);
+  box-shadow: 0 0 0 2px rgba(190, 0, 0, 0.15);
 }
 
 #load-btn {
@@ -92,7 +102,7 @@ main {
   background: #fff;
   border: 1px solid var(--u-border);
   border-radius: 4px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   z-index: 10;
 }
 
@@ -111,9 +121,150 @@ main {
   background: var(--u-gray);
 }
 
+/* ─── Filters ─────────────────────────────────────────────────────────────── */
+
+.filters {
+  margin-bottom: 16px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.filter-label {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: var(--u-text-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+  min-width: 90px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--u-border);
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.chip .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.chip.dept-chip.active {
+  border-color: var(--u-red);
+  background: rgba(190, 0, 0, 0.07);
+  color: var(--u-red-dark);
+}
+
+.chip.off {
+  opacity: 0.35;
+}
+
+/* ─── Graph + detail panel ───────────────────────────────────────────────── */
+
+.graph-area {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
 #network {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 600px;
   border: 1px solid var(--u-border);
   border-radius: 4px;
+}
+
+#detail-panel {
+  width: 300px;
+  flex-shrink: 0;
+  max-height: 600px;
+  overflow-y: auto;
+  border: 1px solid var(--u-border);
+  border-radius: 4px;
+  padding: 16px;
+  position: relative;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+#detail-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: none;
+  background: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--u-text-gray);
+  cursor: pointer;
+}
+
+#detail-close:hover {
+  color: var(--u-black);
+}
+
+#detail-panel h2 {
+  margin: 0 0 2px;
+  font-size: 1.2rem;
+  color: var(--u-red-dark);
+}
+
+#detail-panel .detail-name {
+  margin: 0 0 12px;
+  font-weight: bold;
+}
+
+#detail-panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+}
+
+#detail-panel dt {
+  color: var(--u-text-gray);
+  font-weight: bold;
+}
+
+#detail-panel dd {
+  margin: 0;
+}
+
+#detail-panel h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--u-text-gray);
+  margin: 0 0 4px;
+}
+
+#detail-panel p {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+#detail-empty {
+  color: var(--u-text-gray);
+  font-size: 0.88rem;
 }

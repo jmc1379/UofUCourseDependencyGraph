@@ -38,7 +38,10 @@ class TestPrerequisites:
     def test_code_is_uppercased(self, client):
         """The route uppercases the code before querying — fixture nodes are uppercase."""
         data = client.get("/api/prerequisites/cs1400").get_json()
-        assert data["nodes"] == [{"id": "CS1400", "label": "CS1400", "title": "CS1400"}]
+        assert data["nodes"] == [{
+            "id": "CS1400", "label": "CS1400", "title": "Fundamentals of Programming",
+            "department": "CS", "courseLevel": "1000",
+        }]
 
 
 # ─── /api/search ──────────────────────────────────────────────────────────────────
@@ -54,3 +57,25 @@ class TestSearch:
 
     def test_missing_query_param_returns_empty_list(self, client):
         assert client.get("/api/search").get_json() == []
+
+
+# ─── /api/course/<code> ───────────────────────────────────────────────────────────
+
+class TestCourseDetail:
+
+    def test_known_course_returns_200(self, client):
+        assert client.get("/api/course/CS1400").status_code == 200
+
+    def test_response_has_course_fields(self, client):
+        data = client.get("/api/course/CS1400").get_json()
+        assert data["code"] == "CS1400"
+        assert data["name"] == "Fundamentals of Programming"
+        assert data["units"] == 4.0
+
+    def test_unknown_course_returns_404(self, client):
+        response = client.get("/api/course/CS0000")
+        assert response.status_code == 404
+        assert "error" in response.get_json()
+
+    def test_code_is_uppercased(self, client):
+        assert client.get("/api/course/cs1400").status_code == 200
