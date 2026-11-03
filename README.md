@@ -2,7 +2,7 @@
 
 An interactive prerequisite explorer for University of Utah courses. It scrapes the course catalog, stores the data in SQLite, builds a prerequisite graph with NetworkX, and serves it through a Flask API to a vis.js frontend. Search for any course and see its full prerequisite tree, color-coded by level.
 
-![alt text](image.png)
+![Prerequisite graph for CS 6300](image.png)
 
 ---
 
