@@ -2,11 +2,7 @@
 
 An interactive prerequisite explorer for University of Utah courses. It scrapes the course catalog, stores the data in SQLite, builds a prerequisite graph with NetworkX, and serves it through a Flask API to a vis.js frontend. Search for any course and see its full prerequisite tree, color-coded by level.
 
-Built as a demo to pitch to University of Utah IT, either for internal adoption or for direct database access in place of scraping.
-
-<!-- Add a screenshot of the graph UI here, e.g.:
-![Prerequisite graph for CS 4400](docs/screenshot.png)
--->
+![alt text](image.png)
 
 ---
 
