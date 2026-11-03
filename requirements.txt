@@ -12,12 +12,6 @@ networkx>=3.2.0
 scipy>=1.12.0                   # sparse adjacency matrices
 numpy>=1.26.0
 
-# ─── NLP / Similarity ─────────────────────────────────────────────────────────
-scikit-learn>=1.4.0             # TF-IDF vectorization, cosine similarity
-
-# ─── Visualization ────────────────────────────────────────────────────────────
-pyvis>=0.3.2                    # interactive HTML graph output
-
 # ─── Web Server ───────────────────────────────────────────────────────────────
 flask>=3.0.0                    # serves the API + frontend
 

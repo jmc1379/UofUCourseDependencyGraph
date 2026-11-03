@@ -209,3 +209,7 @@ __marimo__/
 #Testing directories
 output/
 data/
+
+# extras
+.idea/
+.claude/
